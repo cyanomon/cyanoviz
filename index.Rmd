@@ -1,0 +1,114 @@
+---
+title: "New England Cyanobacteria 2014 Data Explorer"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    social: menu
+runtime: shiny
+---
+
+<!-- Learn more about flexdashboard at https://rstudio.github.io/flexdashboard -->
+
+
+```{r setup, include=FALSE}
+# Load packages and initialize data here
+library(flexdashboard)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(maps)
+library(rgdal)
+library(sp)
+library(shiny)
+library(lubridate)
+
+# Clean up the 2014 data
+dat<-read.csv("Data2014.csv",stringsAsFactors = FALSE)%>%
+  filter(SampleLocation != "Other" ||
+           SampleLocation != "Calibration" ||
+           SampleLocation != "Blank") %>%
+  filter(!Flag) %>%
+  filter(Fluorometer == "Beagle")%>%
+  filter(Units=="ug/l")%>%
+  filter(!is.na(Longitude))%>%
+  filter(!is.na(Latitude))%>%
+  filter(Frozen,!Filtered)
+
+#Combine Dates
+dat$date_sampled <- ymd(paste(dat$SampleYear,dat$SampleMonth,dat$SampleDay,sep="-"))
+dat$geo_id <- as.numeric(factor(paste(dat$Longitude,dat$Latitude)))
+dat$geo_date_samp_id <- paste(dat$geo_id,dat$date_sampled,dat$SampleLocation,sep=":")
+dat <- dat%>%
+  arrange(geo_date_samp_id) %>%
+  select(geo_date_samp_id,date_sampled,State,Parameter,Value) %>%
+  filter(!is.na(Value))
+
+dat_chla <- dat %>%
+  filter(Parameter == "Chlorophyll")
+
+dat_phyco <- dat %>%
+  filter(Parameter == "Phycocyanin")
+
+dat_final <- full_join(dat_phyco,dat_chla,by="geo_date_samp_id") %>%
+  select(ID=geo_date_samp_id,State=State.x,Date=date_sampled.x,Chlorophyll=Value.y,Phycocyanin=Value.x)%>%
+  na.omit()
+
+# Reactive that returns the whole dataset if there is no brush
+selectedData <- reactive({
+  data <- brushedPoints(dat_final, input$plot1_brush)
+  if (nrow(data) == 0)
+    data <- dat_final
+  data
+})
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Chlorophyll *a* and Phycocyanin Scatterplot
+
+```{r}
+m <- ggplot(selectedData(), aes(x = Chlorophyll, y = Phycocyanin)) + geom_hex() 
+ggplotly(m)
+```
+
+### Data
+
+```{r}
+renderTable({
+  selectedData()
+})
+```
+
+Column
+-----------------------------------------------------------------------
+
+### 2014 Sampling Locations
+
+```{r}
+# This example modifies code from Hadley Wickham (https://gist.github.com/hadley/233134)
+# It also uses data from Nathan Yau's flowingdata site (http://flowingdata.com/)
+unemp <- read.csv("http://datasets.flowingdata.com/unemployment09.csv")
+names(unemp) <- c("id", "state_fips", "county_fips", "name", "year", 
+                  "?", "?", "?", "rate")
+unemp$county <- tolower(gsub(" County, [A-Z]{2}", "", unemp$name))
+unemp$state <- gsub("^.*([A-Z]{2}).*$", "\\1", unemp$name)
+county_df <- map_data("county")
+names(county_df) <- c("long", "lat", "group", "order", "state_name", "county")
+county_df$state <- state.abb[match(county_df$state_name, tolower(state.name))]
+county_df$state_name <- NULL
+state_df <- map_data("state")
+choropleth <- merge(county_df, unemp, by = c("state", "county"))
+choropleth <- choropleth[order(choropleth$order), ]
+choropleth$rate_d <- cut(choropleth$rate, breaks = c(seq(0, 10, by = 2), 35))
+
+# provide a custom tooltip to plotly with the county name and actual rate
+choropleth$text <- with(choropleth, paste0("County: ", name, "Rate: ", rate))
+p <- ggplot(choropleth, aes(long, lat, group = group)) +
+  geom_polygon(aes(fill = rate_d, text = text), 
+               colour = alpha("white", 1/2), size = 0.2) + 
+  geom_polygon(data = state_df, colour = "white", fill = NA) +
+  scale_fill_brewer(palette = "PuRd") + theme_void()
+# just show the text aesthetic in the tooltip
+ggplotly(p, tooltip = "text")
+```
