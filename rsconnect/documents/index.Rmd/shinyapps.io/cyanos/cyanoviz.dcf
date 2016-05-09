@@ -1,0 +1,9 @@
+name: cyanoviz
+account: cyanos
+server: shinyapps.io
+appId: 98119
+bundleId: 439936
+url: https://cyanos.shinyapps.io/cyanoviz/
+when: 1462220181.64783
+asMultiple: FALSE
+asStatic: FALSE

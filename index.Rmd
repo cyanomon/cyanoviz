@@ -14,11 +14,11 @@ runtime: shiny
 # Load packages and initialize data here
 library(flexdashboard)
 library(ggplot2)
-library(plotly)
+#library(plotly)
 library(dplyr)
-library(maps)
-library(rgdal)
-library(sp)
+#library(maps)
+#library(rgdal)
+#library(sp)
 library(shiny)
 library(lubridate)
 library(leaflet)
@@ -54,6 +54,8 @@ dat_final <- full_join(dat_phyco,dat_chla,by="geo_date_samp_id") %>%
   select(ID=geo_date_samp_id,State=State.x,Date=date_sampled.x,Chlorophyll=Value.y,Phycocyanin=Value.x,Long=Longitude.x,Lat=Latitude.x)%>%
   na.omit()
 
+dat_final$Date <- paste(dat_final$Date)
+
 # Reactive that returns the whole dataset if there is no brush
 selectedData <- reactive({
   data <- brushedPoints(dat_final, input$plot1_brush)
@@ -70,6 +72,8 @@ Column
 -----------------------------------------------------------------------
 
 ### Chlorophyll *a* and Phycocyanin Scatterplot
+
+*drag to select points*
 
 ```{r}
 plotOutput("plot1", brush = brushOpts(id = "plot1_brush"))
@@ -107,14 +111,27 @@ Column
 
 ```{r}
 #Leaflet Map
-popup_text <- paste("State: ", dat_final$State, "<br/>",
+
+renderLeaflet({
+  popup_text <- paste("State: ", dat_final$State, "<br/>",
                     "Chl: ", dat_final$Chlorophyll, "<br/>",
                     "Phyco: ", dat_final$Phycocyanin, "<br/>",
+                    "Date: ", dat_final$Date,
                     sep="")
-renderLeaflet({
-    leaflet(data = dat_final) %>%
-      addTiles() %>%
-      addCircles(~Long,~Lat,popup=popup_text,weight = 10) %>%
-      addCircles(~Long,~Lat,data = selectedData()$data, color = "yellow",weight = 15,opacity = 0.99,popup=popup_text)
-  })
+  popup_text_sel <- paste("State: ", selectedData()$data$State, "<br/>",
+                    "Chl: ", selectedData()$data$Chlorophyll, "<br/>",
+                    "Phyco: ", selectedData()$data$Phycocyanin, "<br/>",
+                    "Date: ", selectedData()$data$Date,
+                    sep="")
+  if(selectedData()$sel == 0){
+      leaflet(data = dat_final) %>%
+        addTiles() %>%
+        addCircleMarkers(~Long,~Lat,radius = 5,popup=popup_text)
+} else {
+      leaflet(data = dat_final) %>%
+        addTiles() %>%
+        addCircleMarkers(~Long,~Lat,radius = 5,popup=popup_text) %>%
+        addCircleMarkers(~Long,~Lat,data = selectedData()$data, color = "yellow", radius = 8,popup=popup_text_sel)
+}
+})
 ```
